@@ -30,7 +30,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/frontend:${{ github.ref_name }},${{ secrets.DOCKER_HUB_USERNAME }}/frontend:${{ github.sha }}
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/stream-recorder:${{ github.ref_name }},${{ secrets.DOCKER_HUB_USERNAME }}/stream-recorder:${{ github.sha }}
 
       - name: docker stack deploy
         uses: appleboy/ssh-action@v1.0.3
