@@ -10,8 +10,11 @@ const port = 4100;
 
 const volumePath = '/app/uploads';
 
+app.get('/', (req, res) => {
+  res.send('StreamRecorder is Running! send wav to /stream');
+});
 
-app.post('/stream-audio', async (req, res) => {
+app.post('/stream', async (req, res) => {
   console.log('Receiving audio stream...');
 
   if (!fs.existsSync(volumePath)) {
