@@ -1,0 +1,19 @@
+{
+  "name": "audio-recording-upload",
+  "version": "1.0.0",
+  "description": "A simple script to record audio and send it as a form-data POST request",
+  "main": "record.js",
+  "scripts": {
+    "start": "node record.js start"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "express": "^4.21.1",
+    "form-data": "^4.0.1",
+    "multer": "^1.4.5-lts.1",
+    "node-lame": "^1.3.2",
+    "request": "^2.88.2"
+  },
+  "author": "",
+  "license": "ISC"
+}
