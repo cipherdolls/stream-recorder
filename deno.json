@@ -1,0 +1,11 @@
+{
+  "imports": {
+    "@libs/run": "jsr:@libs/run@^3.0.2",
+    "@std/cli": "jsr:@std/cli@^1.0.8",
+    "@std/crypto": "jsr:@std/crypto@^1.0.3",
+    "@std/fs": "jsr:@std/fs@^1.0.6",
+    "@std/http": "jsr:@std/http@^1.0.12",
+    "@std/path": "jsr:@std/path@^1.0.8",
+    "@std/uuid": "jsr:@std/uuid@^1.0.4"
+  }
+}
