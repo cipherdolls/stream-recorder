@@ -8,7 +8,7 @@ const config = {
   UPLOADS_DIR: Deno.env.get('UPLOADS_DIR') || '/app/uploads',
   BACKEND_URL: Deno.env.get('BACKEND_URL') || 'http://backend:4000/messages',
   MAX_FILE_SIZE: parseInt(Deno.env.get('MAX_FILE_SIZE') || '10000000', 10), // 10MB default
-  CHUNK_TIMEOUT_MS: parseInt(Deno.env.get('CHUNK_TIMEOUT_MS') || '500', 10),
+  CHUNK_TIMEOUT_MS: parseInt(Deno.env.get('CHUNK_TIMEOUT_MS') || '2000', 10),
   MP3_BITRATE: Deno.env.get('MP3_BITRATE') || '64k',
   ALLOWED_EXTENSIONS: ['.wav', '.mp3'] // Add .mp3 to allowed extensions
 };
@@ -321,7 +321,7 @@ function defaultHandler(_req: Request) {
 Deno.serve({
   port: 8000,
   onListen: ({ hostname, port }) => {
-    logger.info(`Server started on ${hostname}:${port}`);
+    logger.info(`Server started on ${hostname}:${port}`, config);
   },
   onError: (error) => {
     logger.error('Unhandled server error', error);
