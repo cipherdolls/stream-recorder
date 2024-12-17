@@ -206,13 +206,19 @@ const routes: Route[] = [
           },
           transform(chunk, controller) {
             if (!(chunk instanceof Uint8Array)) {
-              logger.warn('Received non-Uint8Array chunk', { 
-                type: typeof chunk, 
-                fileId 
-              });
+              logger.warn('Received non-Uint8Array chunk', { type: typeof chunk, fileId});
               return;
             }
             
+
+            logger.info('Chunk received', {
+              fileId,
+              chunkNumber: chunkCount + 1,
+              chunkSize: chunk.length,
+              chunkBytes: Array.from(chunk.slice(0, 10)), // First 10 bytes for inspection
+              totalBytesReceived: totalBytes + chunk.length
+            });
+
             chunkCount++;
             totalBytes += chunk.length;
             
