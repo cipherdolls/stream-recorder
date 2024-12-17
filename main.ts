@@ -35,6 +35,8 @@ const forwardMp3ToApi = async (fileId: string, chatId: string, authHeader: strin
     }
 
     console.log("MP3 file forwarded successfully!");
+    Deno.removeSync(mp3FilePath); // Remove the mp3 file after forwarding
+
   } catch (error) {
     console.error("Error in API forwarding:", error);
     throw error;
@@ -44,12 +46,12 @@ const forwardMp3ToApi = async (fileId: string, chatId: string, authHeader: strin
 
 const convertWavToMp3 = async ( fileId: string) => {
   console.log("Converting WAV to MP3...");
-  const inputFile = join(uploadsDir, `${fileId}.wav`);
-  const outputFile = join(uploadsDir, `${fileId}.mp3`);
+  const inputFilePath = join(uploadsDir, `${fileId}.wav`);
+  const outputFilePath = join(uploadsDir, `${fileId}.mp3`);
   const bitrate = "64k";
 
   const command = new Deno.Command("ffmpeg", {
-    args: ["-i", inputFile, "-b:a", bitrate, outputFile], // Set bitrate using -b:a
+    args: ["-i", inputFilePath, "-b:a", bitrate, outputFilePath], // Set bitrate using -b:a
     stdin: "piped", // Optional if FFmpeg needs input from stdin
     stdout: "piped", // Capture FFmpeg's stdout
     stderr: "piped", // Capture FFmpeg's stderr
@@ -69,10 +71,12 @@ const convertWavToMp3 = async ( fileId: string) => {
   // Wait for the process to complete and get the status
   const status = await child.status;
   
+  Deno.removeSync(inputFilePath); // Remove the original WAV file
+
   if (status.success) {
-    console.log("WAV to MP3 conversion successful!");
+    return status.success
   } else {
-    console.error("FFmpeg error:", status.code);
+    return Error(`FFmpeg exited with status code ${status.code}`);
   }
 };
 
