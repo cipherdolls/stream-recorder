@@ -1,104 +1,169 @@
 import { route, type Route } from "@std/http/unstable-route";
-import { join } from "@std/path";
-import { ensureDir } from "@std/fs";
+import { join, extname } from "@std/path";
+import { ensureDir, ensureFile } from "@std/fs";
 import { crypto } from "@std/crypto/crypto";
 
-const uploadsDir = '/app/uploads';
+// Configuration with environment variable support
+const config = {
+  UPLOADS_DIR: Deno.env.get('UPLOADS_DIR') || '/app/uploads',
+  BACKEND_URL: Deno.env.get('BACKEND_URL') || 'http://backend:4000/messages',
+  MAX_FILE_SIZE: parseInt(Deno.env.get('MAX_FILE_SIZE') || '10000000', 10), // 10MB default
+  CHUNK_TIMEOUT_MS: parseInt(Deno.env.get('CHUNK_TIMEOUT_MS') || '500', 10),
+  MP3_BITRATE: Deno.env.get('MP3_BITRATE') || '64k',
+  ALLOWED_EXTENSIONS: ['.wav', '.mp3'] // Add .mp3 to allowed extensions
+};
 
-const forwardMp3ToApi = async (fileId: string, chatId: string, authHeader: string) => {
-  console.log("Forwarding MP3 file to API...");
+// Custom error for validation
+class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
 
+// Improved logging utility
+const logger = {
+  info: (message: string, context?: Record<string, unknown>) => 
+    console.log(JSON.stringify({ level: 'INFO', message, ...context })),
+  error: (message: string, error?: unknown, context?: Record<string, unknown>) => 
+    console.error(JSON.stringify({ 
+      level: 'ERROR', 
+      message, 
+      error: error instanceof Error ? error.message : String(error),
+      ...context 
+    })),
+  warn: (message: string, context?: Record<string, unknown>) => 
+    console.warn(JSON.stringify({ level: 'WARN', message, ...context }))
+};
+
+// Validate file extension and size
+const validateFile = (filePath: string, maxSize: number) => {
+  // Optional: Only check extension for input files
+  if (filePath.endsWith('.wav')) {
+    const ext = extname(filePath).toLowerCase();
+    if (!config.ALLOWED_EXTENSIONS.includes(ext)) {
+      throw new ValidationError(`Invalid file type. Allowed: ${config.ALLOWED_EXTENSIONS.join(', ')}`);
+    }
+  }
+
+  const fileInfo = Deno.statSync(filePath);
+  if (fileInfo.size > maxSize) {
+    throw new ValidationError(`File exceeds maximum size of ${maxSize} bytes`);
+  }
+};
+
+// Safely remove file with error handling
+const safeRemoveFile = (filePath: string) => {
+  try {
+    Deno.removeSync(filePath);
+    logger.info(`File removed: ${filePath}`);
+  } catch (error) {
+    logger.error('Error removing file', error, { filePath });
+  }
+};
+
+// Forward MP3 to API with improved error handling
+const forwardMp3ToApi = async (
+  fileId: string, 
+  chatId: string, 
+  authHeader: string
+): Promise<Response> => {
   const mp3FileName = `${fileId}.mp3`;
-  const mp3FilePath = join(uploadsDir, mp3FileName);
-  const mp3File = await Deno.readFile(mp3FilePath);
-
-  // Create FormData
-  const formData = new FormData();
-  const fileBlob = new Blob([mp3File], { type: "audio/mpeg" });
-  formData.append("file", fileBlob, mp3FileName);
-  formData.append("chatId", chatId);
-  formData.append("content", "test is love");
+  const mp3FilePath = join(config.UPLOADS_DIR, mp3FileName);
 
   try {
-    const response = await fetch("http://backend:4000/messages", {
+    // Validate file before processing
+    validateFile(mp3FilePath, config.MAX_FILE_SIZE);
+
+    const mp3File = await Deno.readFile(mp3FilePath);
+
+    const formData = new FormData();
+    const fileBlob = new Blob([mp3File], { type: "audio/mpeg" });
+    formData.append("file", fileBlob, mp3FileName);
+    formData.append("chatId", chatId);
+    formData.append("content", "Voice message");
+
+    const response = await fetch(config.BACKEND_URL, {
       method: "POST",
-      headers: {
-        Authorization: authHeader, // Forward the Authorization header
-      },
+      headers: { Authorization: authHeader },
       body: formData,
     });
 
     if (!response.ok) {
-      console.error("Error forwarding MP3 file:", await response.text());
-      throw new Error(`Failed to forward MP3 file. Status: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`API forwarding failed: ${errorText}`);
     }
 
-    console.log("MP3 file forwarded successfully!");
-    Deno.removeSync(mp3FilePath); // Remove the mp3 file after forwarding
+    // Optionally remove file after successful forwarding
+    safeRemoveFile(mp3FilePath);
 
+    return response;
   } catch (error) {
-    console.error("Error in API forwarding:", error);
+    logger.error('MP3 forwarding error', error, { 
+      fileId, 
+      chatId, 
+      backendUrl: config.BACKEND_URL 
+    });
     throw error;
   }
 };
 
+// Convert WAV to MP3 with improved error handling
+const convertWavToMp3 = async (fileId: string): Promise<boolean> => {
+  const inputFilePath = join(config.UPLOADS_DIR, `${fileId}.wav`);
+  const outputFilePath = join(config.UPLOADS_DIR, `${fileId}.mp3`);
 
-const convertWavToMp3 = async ( fileId: string) => {
-  console.log("Converting WAV to MP3...");
-  const inputFilePath = join(uploadsDir, `${fileId}.wav`);
-  const outputFilePath = join(uploadsDir, `${fileId}.mp3`);
-  const bitrate = "64k";
+  try {
+    // Validate input file before conversion
+    validateFile(inputFilePath, config.MAX_FILE_SIZE);
 
-  const command = new Deno.Command("ffmpeg", {
-    args: ["-i", inputFilePath, "-b:a", bitrate, outputFilePath], // Set bitrate using -b:a
-    stdin: "piped", // Optional if FFmpeg needs input from stdin
-    stdout: "piped", // Capture FFmpeg's stdout
-    stderr: "piped", // Capture FFmpeg's stderr
-  });
+    const command = new Deno.Command("ffmpeg", {
+      args: [
+        "-i", inputFilePath, 
+        "-b:a", config.MP3_BITRATE, 
+        "-map_metadata", "-1", // Remove metadata to reduce file size
+        outputFilePath
+      ],
+      stdin: "null",
+      stdout: "null",
+      stderr: "piped"
+    });
   
-  const child = command.spawn();
+    const { success, stderr } = await command.output();
   
-  // Optionally log the stdout and stderr output
-  child.stdout.pipeTo(
-    Deno.openSync("stdout.log", { write: true, create: true }).writable,
-  );
-  
-  child.stderr.pipeTo(
-    Deno.openSync("stderr.log", { write: true, create: true }).writable,
-  );
-  
-  // Wait for the process to complete and get the status
-  const status = await child.status;
-  
-  Deno.removeSync(inputFilePath); // Remove the original WAV file
+    if (!success) {
+      const errorMessage = new TextDecoder().decode(stderr);
+      throw new Error(`Conversion failed: ${errorMessage}`);
+    }
 
-  if (status.success) {
-    return status.success
-  } else {
-    return Error(`FFmpeg exited with status code ${status.code}`);
+    // Remove original WAV file after successful conversion
+    safeRemoveFile(inputFilePath);
+
+    return true;
+  } catch (error) {
+    logger.error('WAV to MP3 conversion error', error, { fileId });
+    throw error;
   }
 };
 
-
-
+// Routes configuration
 const routes: Route[] = [
   {
     method: "GET",
     pattern: new URLPattern({ pathname: "/" }),
-    handler: () => new Response("StreamRecorder is Running! stream post wav to /stream"),
+    handler: () => new Response("StreamRecorder is Running!", { 
+      headers: { 'Content-Type': 'text/plain' } 
+    }),
   },
   {
     method: ["POST", "HEAD"],
     pattern: new URLPattern({ pathname: "/stream" }),
     handler: async (req: Request) => {
-      console.log('Receiving audio stream...');
-      console.log('Request headers:', Object.fromEntries(req.headers));
-      console.log('Request body:', );
-
       const url = new URL(req.url);
       const chatId = url.searchParams.get("chatId");
       const authorization = req.headers.get("Authorization");
 
+      // Validation checks
       if (!authorization) {
         return new Response("Missing Authorization header", { status: 401 });
       }
@@ -106,62 +171,78 @@ const routes: Route[] = [
         return new Response("Missing chatId query parameter", { status: 400 });
       }
 
+      // Ensure uploads directory exists
+      await ensureDir(config.UPLOADS_DIR);
 
-      await ensureDir(uploadsDir);
-
-      const fileId = await crypto.randomUUID()
+      const fileId = crypto.randomUUID();
       const wavFileName = `${fileId}.wav`;
-      const wavFilePath = join(uploadsDir, wavFileName);
+      const wavFilePath = join(config.UPLOADS_DIR, wavFileName);
+      
+      const mp3FileName = `${fileId}.mp3`;
+      const mp3FilePath = join(config.UPLOADS_DIR, mp3FileName);
+
       let file: Deno.FsFile | null = null;
       
       try {
-        // Open a file for writing
+        // Safely create file with proper permissions
         file = await Deno.open(wavFilePath, { 
           create: true, 
           write: true, 
-          truncate: true 
+          truncate: true,
+          mode: 0o600 // Restrict file permissions
         });
 
         let totalBytes = 0;
         let chunkCount = 0;
-        let timeoutId: number;
+        let timeoutId: number | null = null;
 
-        // Timeout function to abort the connection
-        const resetTimeout = (controller: TransformStreamDefaultController) => {
-          if (timeoutId !== null) {
-            clearTimeout(timeoutId);
-          }
-          timeoutId = setTimeout(() => {
-            console.warn("No chunks received for 500 milliseconds. Closing connection.");
-            controller.terminate();
-          }, 500);
-        };
-
-
-        // Custom TransformStream to handle timeout and logging
+        // More robust timeout and chunk handling
         const chunkLoggerStream = new TransformStream({
           start(controller) {
-            resetTimeout(controller);
+            timeoutId = setTimeout(() => {
+              logger.warn('Stream timeout: No chunks received', { fileId });
+              controller.terminate();
+            }, config.CHUNK_TIMEOUT_MS);
           },
           transform(chunk, controller) {
             if (!(chunk instanceof Uint8Array)) {
-              console.warn("Received non-Uint8Array chunk:", typeof chunk);
+              logger.warn('Received non-Uint8Array chunk', { 
+                type: typeof chunk, 
+                fileId 
+              });
               return;
             }
+            
             chunkCount++;
             totalBytes += chunk.length;
-            console.log(`Chunk ${chunkCount}: ${chunk.length} bytes`);
+            
+            // Optional: Add a hard limit on total file size
+            if (totalBytes > config.MAX_FILE_SIZE) {
+              controller.terminate();
+              throw new ValidationError('Maximum file size exceeded');
+            }
+            
             controller.enqueue(chunk);
-            resetTimeout(controller); // Reset timeout on every chunk
+            
+            // Reset timeout on each valid chunk
+            if (timeoutId) clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+              logger.warn('Stream timeout between chunks', { fileId });
+              controller.terminate();
+            }, config.CHUNK_TIMEOUT_MS);
           },
           flush() {
-            console.log(`Total chunks: ${chunkCount}`);
-            console.log(`Total bytes received: ${totalBytes}`);
-            clearTimeout(timeoutId); // Clear timeout when flushing
-          },
+            if (timeoutId) clearTimeout(timeoutId);
+            
+            logger.info('Stream receipt completed', { 
+              totalChunks: chunkCount, 
+              totalBytes,
+              fileId 
+            });
+          }
         });
 
-        // Write the incoming request body to the file
+        // Robust stream handling
         if (req.body) {
           await req.body
             .pipeThrough(chunkLoggerStream)
@@ -172,25 +253,28 @@ const routes: Route[] = [
             });
         }
 
-        console.log('Audio stream received and saved.', wavFilePath);
-
+        // Convert and forward with comprehensive error handling
         try {
           await convertWavToMp3(fileId);
-        }
-        catch (error) {
-          console.error("Error converting WAV to MP3:", error);
-          return new Response("Error converting WAV to MP3", { status: 500 });
-        }
-
-        try {
           await forwardMp3ToApi(fileId, chatId, authorization);
-        } catch (error) {
-          console.error("Error forwarding MP3 to API:", error);
-          return new Response("Error forwarding MP3 to API", { status: 500 });
-        }
+        } catch (processingError) {
 
+          logger.error('Audio processing error', processingError, { 
+            fileId, 
+            chatId 
+          });
+
+          // Remove incomplete files in case of processing errors
+          safeRemoveFile(wavFilePath);
+          safeRemoveFile(mp3FilePath);
+          
+          return new Response('Error processing audio', { 
+            status: 500,
+            headers: { 'Content-Type': 'text/plain' }
+          });
+        }
         
-        return new Response('Stream received successfully', { 
+        return new Response('Stream processed successfully', { 
           status: 200,
           headers: {
             'Content-Type': 'text/plain',
@@ -199,38 +283,42 @@ const routes: Route[] = [
           }
         });
       } catch (err) {
-        console.error('Error receiving stream:', {
-          errorName: err instanceof Error ? err.name : 'Unknown Error',
-          errorMessage: err instanceof Error ? err.message : String(err),
-          errorStack: err instanceof Error ? err.stack : undefined
+        // Comprehensive error logging
+        logger.error('Stream processing error', err, { 
+          fileId,
+          filePath: wavFilePath
         });
         
-        // Safely close the file if it was opened
+        // Ensure file is closed and removed
         try {
-          if (file) {
-            file.close();
-          }
-        } catch (closeErr) {
-          console.error('Error closing file:', closeErr);
+          if (file) file.close();
+          safeRemoveFile(wavFilePath);
+        } catch (cleanupError) {
+          logger.error('Error during error cleanup', cleanupError);
         }
 
-        
-        // Attempt to remove the potentially incomplete file
-        try {
-          Deno.removeSync(wavFilePath);
-        } catch (removeErr) {
-          console.error('Error removing incomplete file:', removeErr);
-        }
-
-        return new Response('Error processing stream', { status: 500 });
+        return new Response('Internal server error', { status: 500 });
       }
     }
   }
 ];
 
+// Default route handler
 function defaultHandler(_req: Request) {
-  return new Response("Not found", { status: 404 });
+  return new Response("Not found", { 
+    status: 404,
+    headers: { 'Content-Type': 'text/plain' }
+  });
 }
 
-// Use Deno.serve with the routing function
-Deno.serve(route(routes, defaultHandler));
+// Server configuration with error handling
+Deno.serve({
+  port: 8000,
+  onListen: ({ hostname, port }) => {
+    logger.info(`Server started on ${hostname}:${port}`);
+  },
+  onError: (error) => {
+    logger.error('Unhandled server error', error);
+    return new Response('Server error', { status: 500 });
+  }
+}, route(routes, defaultHandler));
