@@ -5,6 +5,7 @@
     "@std/crypto": "jsr:@std/crypto@^1.0.3",
     "@std/fs": "jsr:@std/fs@^1.0.6",
     "@std/http": "jsr:@std/http@^1.0.12",
+    "@std/log": "jsr:@std/log@^0.224.11",
     "@std/path": "jsr:@std/path@^1.0.8",
     "@std/uuid": "jsr:@std/uuid@^1.0.4"
   }

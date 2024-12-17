@@ -1,7 +1,17 @@
 import { route, type Route } from "@std/http/unstable-route";
 import { join, extname } from "@std/path";
-import { ensureDir, ensureFile } from "@std/fs";
+import { ensureDir } from "@std/fs";
 import { crypto } from "@std/crypto/crypto";
+import * as log from "@std/log";
+
+log.setup({
+  handlers: {
+    default: new log.ConsoleHandler("DEBUG", {
+      formatter: log.formatters.jsonFormatter,
+      useColors: false,
+    }),
+  },
+});
 
 // Configuration with environment variable support
 const config = {
@@ -21,20 +31,6 @@ class ValidationError extends Error {
   }
 }
 
-// Improved logging utility
-const logger = {
-  info: (message: string, context?: Record<string, unknown>) => 
-    console.log(JSON.stringify({ level: 'INFO', message, ...context })),
-  error: (message: string, error?: unknown, context?: Record<string, unknown>) => 
-    console.error(JSON.stringify({ 
-      level: 'ERROR', 
-      message, 
-      error: error instanceof Error ? error.message : String(error),
-      ...context 
-    })),
-  warn: (message: string, context?: Record<string, unknown>) => 
-    console.warn(JSON.stringify({ level: 'WARN', message, ...context }))
-};
 
 // Validate file extension and size
 const validateFile = (filePath: string, maxSize: number) => {
@@ -56,9 +52,9 @@ const validateFile = (filePath: string, maxSize: number) => {
 const safeRemoveFile = (filePath: string) => {
   try {
     Deno.removeSync(filePath);
-    logger.info(`File removed: ${filePath}`);
+    log.info(`File removed: ${filePath}`);
   } catch (error) {
-    logger.error('Error removing file', error, { filePath });
+    log.error('Error removing file', error, { filePath });
   }
 };
 
@@ -99,7 +95,7 @@ const forwardMp3ToApi = async (
 
     return response;
   } catch (error) {
-    logger.error('MP3 forwarding error', error, { 
+    log.error('MP3 forwarding error', error, { 
       fileId, 
       chatId, 
       backendUrl: config.BACKEND_URL 
@@ -141,7 +137,7 @@ const convertWavToMp3 = async (fileId: string): Promise<boolean> => {
 
     return true;
   } catch (error) {
-    logger.error('WAV to MP3 conversion error', error, { fileId });
+    log.error('WAV to MP3 conversion error', error, { fileId });
     throw error;
   }
 };
@@ -200,18 +196,18 @@ const routes: Route[] = [
         const chunkLoggerStream = new TransformStream({
           start(controller) {
             timeoutId = setTimeout(() => {
-              logger.warn('Stream timeout: No chunks received', { fileId });
+              log.warn('Stream timeout: No chunks received', { fileId });
               controller.terminate();
             }, config.CHUNK_TIMEOUT_MS);
           },
           transform(chunk, controller) {
             if (!(chunk instanceof Uint8Array)) {
-              logger.warn('Received non-Uint8Array chunk', { type: typeof chunk, fileId});
+              log.warn('Received non-Uint8Array chunk', { type: typeof chunk, fileId});
               return;
             }
             
 
-            logger.info('Chunk received', {
+            log.info('Chunk received', {
               fileId,
               chunkNumber: chunkCount + 1,
               chunkSize: chunk.length,
@@ -233,14 +229,14 @@ const routes: Route[] = [
             // Reset timeout on each valid chunk
             if (timeoutId) clearTimeout(timeoutId);
             timeoutId = setTimeout(() => {
-              logger.warn('Stream timeout between chunks', { fileId });
+              log.warn('Stream timeout between chunks', { fileId });
               controller.terminate();
             }, config.CHUNK_TIMEOUT_MS);
           },
           flush() {
             if (timeoutId) clearTimeout(timeoutId);
             
-            logger.info('Stream receipt completed', { 
+            log.info('Stream receipt completed', { 
               totalChunks: chunkCount, 
               totalBytes,
               fileId 
@@ -265,7 +261,7 @@ const routes: Route[] = [
           await forwardMp3ToApi(fileId, chatId, authorization);
         } catch (processingError) {
 
-          logger.error('Audio processing error', processingError, { 
+          log.error('Audio processing error', processingError, { 
             fileId, 
             chatId 
           });
@@ -289,18 +285,13 @@ const routes: Route[] = [
           }
         });
       } catch (err) {
-        // Comprehensive error logging
-        logger.error('Stream processing error', err, { 
-          fileId,
-          filePath: wavFilePath
-        });
+        log.error('Stream processing error', err, { fileId, filePath: wavFilePath});
         
-        // Ensure file is closed and removed
         try {
           if (file) file.close();
           safeRemoveFile(wavFilePath);
         } catch (cleanupError) {
-          logger.error('Error during error cleanup', cleanupError);
+          log.error('Error during error cleanup', cleanupError);
         }
 
         return new Response('Internal server error', { status: 500 });
@@ -321,10 +312,10 @@ function defaultHandler(_req: Request) {
 Deno.serve({
   port: 8000,
   onListen: ({ hostname, port }) => {
-    logger.info(`Server started on ${hostname}:${port}`, config);
+    log.info(`Server started on ${hostname}:${port}`, config);
   },
   onError: (error) => {
-    logger.error('Unhandled server error', error);
+    log.error('Unhandled server error', error);
     return new Response('Server error', { status: 500 });
   }
 }, route(routes, defaultHandler));
