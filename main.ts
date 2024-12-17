@@ -2,7 +2,6 @@ import { route, type Route } from "@std/http/unstable-route";
 import { join } from "@std/path";
 import { ensureDir } from "@std/fs";
 import { crypto } from "@std/crypto/crypto";
-import { createReadStream } from "node:fs";
 
 const uploadsDir = '/app/uploads';
 
