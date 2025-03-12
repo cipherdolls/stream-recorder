@@ -16,7 +16,7 @@ log.setup({
 // Configuration with environment variable support
 const config = {
   UPLOADS_DIR: Deno.env.get('UPLOADS_DIR') || '/app/uploads',
-  BACKEND_URL: Deno.env.get('BACKEND_URL') || 'http://backend:4000/messages',
+  BACKEND_URL: Deno.env.get('BACKEND_URL') || 'http://api:4000/messages',
   MAX_FILE_SIZE: parseInt(Deno.env.get('MAX_FILE_SIZE') || '10000000', 10), // 10MB default
   CHUNK_TIMEOUT_MS: parseInt(Deno.env.get('CHUNK_TIMEOUT_MS') || '2000', 10),
   MP3_BITRATE: Deno.env.get('MP3_BITRATE') || '64k',
