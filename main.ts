@@ -77,7 +77,6 @@ const forwardMp3ToApi = async (
     const fileBlob = new Blob([mp3File], { type: "audio/mpeg" });
     formData.append("file", fileBlob, mp3FileName);
     formData.append("chatId", chatId);
-    formData.append("content", "Voice message");
 
     const response = await fetch(config.BACKEND_URL, {
       method: "POST",
