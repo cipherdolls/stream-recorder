@@ -6,7 +6,7 @@ import { createRouter } from "./routes.ts";
 log.setup({
   handlers: {
     default: new log.ConsoleHandler("DEBUG", {
-      formatter: log.formatters.jsonFormatter,
+      formatter: (record) => `${record.datetime.toISOString()} ${record.levelName} ${record.msg}`,
       useColors: false,
     }),
   },
@@ -19,7 +19,7 @@ Deno.serve(
   {
     port: 8000,
     onListen: ({ hostname, port }) => {
-      log.info(`Server started on ${hostname}:${port}`, config);
+      log.info(`Server started on ${hostname}:${port}`);
     },
     onError: (error) => {
       log.error("Unhandled server error", error);

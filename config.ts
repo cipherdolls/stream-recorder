@@ -39,6 +39,6 @@ export function loadConfig(): Config {
     MAX_STREAM_BYTES: parseIntStrict(Deno.env.get("MAX_STREAM_BYTES"), 10_000_000),
   };
   validateConfig(config);
-  log.info("Config loaded", config);
+  log.info(`Config loaded — backend=${config.BACKEND_URL} bitrate=${config.MP3_BITRATE} timeout=${config.CHUNK_TIMEOUT_MS}ms`);
   return config;
 }

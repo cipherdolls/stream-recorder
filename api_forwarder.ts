@@ -25,14 +25,10 @@ export const forwardMp3ToApi = async (
       throw new Error(`Backend ${response.status}: ${errorText.slice(0, 300)}`);
     }
 
-    log.info(`Forwarded MP3 to backend — ${(mp3Data.length / 1024).toFixed(1)} KB -> ${response.status}`, {
-      chatId, mp3Bytes: mp3Data.length, status: response.status,
-    });
+    log.info(`Forwarded MP3 to backend — ${(mp3Data.length / 1024).toFixed(1)} KB -> ${response.status}`);
     return response;
   } catch (error) {
-    log.error(`Forward failed — ${error instanceof Error ? error.message : String(error)}`, {
-      chatId, mp3Bytes: mp3Data.length, backendUrl: config.BACKEND_URL, error: String(error),
-    });
+    log.error(`Forward failed — ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   }
 };

@@ -57,15 +57,10 @@ export const convertWavToMp3 = async (
     }
 
     const ratio = ((stdout.length / wavData.length) * 100).toFixed(0);
-    log.info(
-      `WAV -> MP3 — ${(wavData.length / 1024).toFixed(1)} KB -> ${(stdout.length / 1024).toFixed(1)} KB (${ratio}%) @ ${config.MP3_BITRATE}`,
-      { inputBytes: wavData.length, outputBytes: stdout.length, bitrate: config.MP3_BITRATE },
-    );
+    log.info(`WAV -> MP3 — ${(wavData.length / 1024).toFixed(1)} KB -> ${(stdout.length / 1024).toFixed(1)} KB (${ratio}%) @ ${config.MP3_BITRATE}`);
     return stdout;
   } catch (error) {
-    log.error(`WAV -> MP3 failed — ${error instanceof Error ? error.message : String(error)}`, {
-      inputBytes: wavData.length, error: String(error),
-    });
+    log.error(`WAV -> MP3 failed — ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   }
 };

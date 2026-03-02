@@ -1,4 +1,3 @@
-import { crypto } from "@std/crypto/crypto";
 import * as log from "@std/log";
 import type { Config } from "./config.ts";
 import { convertWavToMp3 } from "./ffmpeg.ts";
@@ -27,7 +26,6 @@ export function wsStreamHandler(req: Request, config: Config): Response {
 
   const { socket, response } = Deno.upgradeWebSocket(req);
 
-  const streamId = crypto.randomUUID();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
   let chunkCount = 0;
@@ -36,7 +34,7 @@ export function wsStreamHandler(req: Request, config: Config): Response {
   const resetTimeout = () => {
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => {
-      log.warn(`Stream idle timeout after ${(totalBytes / 1024).toFixed(1)} KB`, { streamId, chatId, totalBytes });
+      log.warn(`[${chatId}] Stream idle timeout — ${(totalBytes / 1024).toFixed(1)} KB`);
       socket.close(1000, "timeout");
     }, config.CHUNK_TIMEOUT_MS);
   };
@@ -46,7 +44,7 @@ export function wsStreamHandler(req: Request, config: Config): Response {
   const startTime = Date.now();
 
   socket.onopen = () => {
-    log.info("Stream opened", { streamId, chatId });
+    log.info(`[${chatId}] Stream opened`);
     resetTimeout();
   };
 
@@ -62,9 +60,7 @@ export function wsStreamHandler(req: Request, config: Config): Response {
     totalBytes += data.length;
 
     if (totalBytes > config.MAX_STREAM_BYTES) {
-      log.warn(`Stream exceeded max size — ${(totalBytes / 1024).toFixed(0)} KB > ${(config.MAX_STREAM_BYTES / 1024).toFixed(0)} KB`, {
-        streamId, chatId, totalBytes, max: config.MAX_STREAM_BYTES,
-      });
+      log.warn(`[${chatId}] Stream exceeded max size — ${(totalBytes / 1024).toFixed(0)} KB > ${(config.MAX_STREAM_BYTES / 1024).toFixed(0)} KB`);
       socket.close(1009, "message too big");
       return;
     }
@@ -79,12 +75,10 @@ export function wsStreamHandler(req: Request, config: Config): Response {
     const streamDurationS = (streamDurationMs / 1000).toFixed(1);
     const sizeKB = (totalBytes / 1024).toFixed(1);
 
-    log.info(`Stream closed — ${sizeKB} KB in ${streamDurationS}s (${chunkCount} chunks)`, {
-      streamId, chatId, totalBytes, chunkCount, streamDurationMs,
-    });
+    log.info(`[${chatId}] Stream closed — ${sizeKB} KB in ${streamDurationS}s (${chunkCount} chunks)`);
 
     if (totalBytes === 0) {
-      log.warn("Stream empty, skipping processing", { streamId, chatId });
+      log.warn(`[${chatId}] Stream empty, skipping`);
       return;
     }
 
@@ -101,19 +95,14 @@ export function wsStreamHandler(req: Request, config: Config): Response {
 
       const totalMs = Date.now() - startTime;
       const ratio = ((mp3Data.length / totalBytes) * 100).toFixed(0);
-      log.info(
-        `Pipeline complete — WAV ${sizeKB} KB -> MP3 ${(mp3Data.length / 1024).toFixed(1)} KB (${ratio}%) | convert ${convertMs}ms, forward ${forwardMs}ms, total ${totalMs}ms`,
-        { streamId, chatId, wavBytes: totalBytes, mp3Bytes: mp3Data.length, convertMs, forwardMs, totalMs },
-      );
+      log.info(`[${chatId}] Pipeline complete — WAV ${sizeKB} KB -> MP3 ${(mp3Data.length / 1024).toFixed(1)} KB (${ratio}%) | convert ${convertMs}ms, forward ${forwardMs}ms, total ${totalMs}ms`);
     } catch (err) {
-      log.error(`Pipeline failed — ${err instanceof Error ? err.message : String(err)}`, {
-        streamId, chatId, totalBytes, error: String(err),
-      });
+      log.error(`[${chatId}] Pipeline failed — ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
   socket.onerror = (event) => {
-    log.error(`Stream error — ${String(event)}`, { streamId, chatId });
+    log.error(`[${chatId}] Stream error — ${String(event)}`);
   };
 
   return response;
