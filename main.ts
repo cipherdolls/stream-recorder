@@ -1,5 +1,5 @@
 import { route, type Route } from "@std/http/unstable-route";
-import { join, extname } from "@std/path";
+import { join } from "@std/path";
 import { ensureDir } from "@std/fs";
 import { crypto } from "@std/crypto/crypto";
 import * as log from "@std/log";
@@ -20,31 +20,13 @@ const config = {
   MAX_FILE_SIZE: parseInt(Deno.env.get('MAX_FILE_SIZE') || '10000000', 10), // 10MB default
   CHUNK_TIMEOUT_MS: parseInt(Deno.env.get('CHUNK_TIMEOUT_MS') || '2000', 10),
   MP3_BITRATE: Deno.env.get('MP3_BITRATE') || '64k',
-  ALLOWED_EXTENSIONS: ['.wav', '.mp3'] // Add .mp3 to allowed extensions
 };
 
-// Custom error for validation
-class ValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ValidationError';
-  }
-}
-
-
-// Validate file extension and size
+// Validate file size
 const validateFile = (filePath: string, maxSize: number) => {
-  // Optional: Only check extension for input files
-  if (filePath.endsWith('.wav')) {
-    const ext = extname(filePath).toLowerCase();
-    if (!config.ALLOWED_EXTENSIONS.includes(ext)) {
-      throw new ValidationError(`Invalid file type. Allowed: ${config.ALLOWED_EXTENSIONS.join(', ')}`);
-    }
-  }
-
   const fileInfo = Deno.statSync(filePath);
   if (fileInfo.size > maxSize) {
-    throw new ValidationError(`File exceeds maximum size of ${maxSize} bytes`);
+    throw new Error(`File exceeds maximum size of ${maxSize} bytes`);
   }
 };
 
@@ -252,153 +234,6 @@ const routes: Route[] = [
       return response;
     }
   },
-  {
-    method: ["POST", "HEAD"],
-    pattern: new URLPattern({ pathname: "/stream" }),
-    handler: async (req: Request) => {
-      const url = new URL(req.url);
-      const chatId = url.searchParams.get("chatId");
-      const authorization = req.headers.get("Authorization");
-
-      // Validation checks
-      if (!authorization) {
-        return new Response("Missing Authorization header", { status: 401 });
-      }
-      if (!chatId) {
-        return new Response("Missing chatId query parameter", { status: 400 });
-      }
-
-      // Ensure uploads directory exists
-      await ensureDir(config.UPLOADS_DIR);
-
-      const fileId = crypto.randomUUID();
-      const wavFileName = `${fileId}.wav`;
-      const wavFilePath = join(config.UPLOADS_DIR, wavFileName);
-      
-      const mp3FileName = `${fileId}.mp3`;
-      const mp3FilePath = join(config.UPLOADS_DIR, mp3FileName);
-
-      let file: Deno.FsFile | null = null;
-      
-      try {
-        // Safely create file with proper permissions
-        file = await Deno.open(wavFilePath, { 
-          create: true, 
-          write: true, 
-          truncate: true,
-          mode: 0o600 // Restrict file permissions
-        });
-
-        let totalBytes = 0;
-        let chunkCount = 0;
-        let timeoutId: number | null = null;
-
-        // More robust timeout and chunk handling
-        const chunkLoggerStream = new TransformStream({
-          start(controller) {
-            timeoutId = setTimeout(() => {
-              log.warn('Stream timeout: No chunks received', { fileId });
-              controller.terminate();
-            }, config.CHUNK_TIMEOUT_MS);
-          },
-          transform(chunk, controller) {
-            if (!(chunk instanceof Uint8Array)) {
-              log.warn('Received non-Uint8Array chunk', { type: typeof chunk, fileId});
-              return;
-            }
-            
-
-            log.info('Chunk received', {
-              fileId,
-              chunkNumber: chunkCount + 1,
-              chunkSize: chunk.length,
-              chunkBytes: Array.from(chunk.slice(0, 10)), // First 10 bytes for inspection
-              totalBytesReceived: totalBytes + chunk.length
-            });
-
-            chunkCount++;
-            totalBytes += chunk.length;
-            
-            // Optional: Add a hard limit on total file size
-            if (totalBytes > config.MAX_FILE_SIZE) {
-              controller.terminate();
-              throw new ValidationError('Maximum file size exceeded');
-            }
-            
-            controller.enqueue(chunk);
-            
-            // Reset timeout on each valid chunk
-            if (timeoutId) clearTimeout(timeoutId);
-            timeoutId = setTimeout(() => {
-              log.warn('Stream timeout between chunks', { fileId });
-              controller.terminate();
-            }, config.CHUNK_TIMEOUT_MS);
-          },
-          flush() {
-            if (timeoutId) clearTimeout(timeoutId);
-            
-            log.info('Stream receipt completed', { 
-              totalChunks: chunkCount, 
-              totalBytes,
-              fileId 
-            });
-          }
-        });
-
-        // Robust stream handling
-        if (req.body) {
-          await req.body
-            .pipeThrough(chunkLoggerStream)
-            .pipeTo(file.writable, {
-              preventClose: false,
-              preventAbort: false,
-              preventCancel: false
-            });
-        }
-
-        // Convert and forward with comprehensive error handling
-        try {
-          await convertWavToMp3(fileId);
-          await forwardMp3ToApi(fileId, chatId, authorization);
-        } catch (processingError) {
-
-          log.error('Audio processing error', processingError, { 
-            fileId, 
-            chatId 
-          });
-
-          // Remove incomplete files in case of processing errors
-          safeRemoveFile(wavFilePath);
-          safeRemoveFile(mp3FilePath);
-          
-          return new Response('Error processing audio', { 
-            status: 500,
-            headers: { 'Content-Type': 'text/plain' }
-          });
-        }
-        
-        return new Response('Stream processed successfully', { 
-          status: 200,
-          headers: {
-            'Content-Type': 'text/plain',
-            'X-Chunks-Received': chunkCount.toString(),
-            'X-Total-Bytes': totalBytes.toString()
-          }
-        });
-      } catch (err) {
-        log.error('Stream processing error', err, { fileId, filePath: wavFilePath});
-        
-        try {
-          if (file) file.close();
-          safeRemoveFile(wavFilePath);
-        } catch (cleanupError) {
-          log.error('Error during error cleanup', cleanupError);
-        }
-
-        return new Response('Internal server error', { status: 500 });
-      }
-    }
-  }
 ];
 
 // Default route handler
