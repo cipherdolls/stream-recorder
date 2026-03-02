@@ -152,6 +152,108 @@ const routes: Route[] = [
     }),
   },
   {
+    method: "GET",
+    pattern: new URLPattern({ pathname: "/ws-stream" }),
+    handler: async (req: Request) => {
+      const url = new URL(req.url);
+      const chatId = url.searchParams.get("chatId");
+      const authorization = url.searchParams.get("auth");
+
+      if (!authorization) {
+        return new Response("Missing auth query parameter", { status: 401 });
+      }
+      if (!chatId) {
+        return new Response("Missing chatId query parameter", { status: 400 });
+      }
+
+      const upgrade = req.headers.get("upgrade") || "";
+      if (upgrade.toLowerCase() !== "websocket") {
+        return new Response("Expected WebSocket upgrade", { status: 426 });
+      }
+
+      const { socket, response } = Deno.upgradeWebSocket(req);
+
+      await ensureDir(config.UPLOADS_DIR);
+      const fileId = crypto.randomUUID();
+      const wavFilePath = join(config.UPLOADS_DIR, `${fileId}.wav`);
+      const mp3FilePath = join(config.UPLOADS_DIR, `${fileId}.mp3`);
+
+      let file: Deno.FsFile | null = null;
+      let totalBytes = 0;
+      let chunkCount = 0;
+      let timeoutId: number | null = null;
+
+      const resetTimeout = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          log.warn('WS stream timeout', { fileId, totalBytes });
+          socket.close(1000, 'timeout');
+        }, config.CHUNK_TIMEOUT_MS);
+      };
+
+      socket.binaryType = "arraybuffer";
+
+      socket.onopen = async () => {
+        log.info('WS stream opened', { fileId, chatId });
+        file = await Deno.open(wavFilePath, {
+          create: true, write: true, truncate: true, mode: 0o600
+        });
+        resetTimeout();
+      };
+
+      socket.onmessage = async (event) => {
+        if (!file) return;
+        const data = event.data instanceof ArrayBuffer
+          ? new Uint8Array(event.data)
+          : typeof event.data === "string"
+            ? new TextEncoder().encode(event.data)
+            : new Uint8Array(event.data);
+
+        chunkCount++;
+        totalBytes += data.length;
+        resetTimeout();
+
+        try {
+          await file.write(data);
+        } catch (err) {
+          log.error('WS file write error', err, { fileId });
+          socket.close(1011, 'write error');
+        }
+      };
+
+      socket.onclose = async () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (file) {
+          file.close();
+          file = null;
+        }
+
+        log.info('WS stream closed', { fileId, totalBytes, chunkCount });
+
+        if (totalBytes === 0) {
+          safeRemoveFile(wavFilePath);
+          return;
+        }
+
+        try {
+          await convertWavToMp3(fileId);
+          await forwardMp3ToApi(fileId, chatId!, `Bearer ${authorization}`);
+          log.info('WS stream processed OK', { fileId, chatId });
+        } catch (err) {
+          log.error('WS audio processing error', err, { fileId, chatId });
+          safeRemoveFile(wavFilePath);
+          safeRemoveFile(mp3FilePath);
+        }
+      };
+
+      socket.onerror = (event) => {
+        log.error('WS error', { fileId, message: String(event) });
+      };
+
+      return response;
+    }
+  },
+  {
     method: ["POST", "HEAD"],
     pattern: new URLPattern({ pathname: "/stream" }),
     handler: async (req: Request) => {
