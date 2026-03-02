@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
 import { loadConfig } from "./config.ts";
 
 const ENV_KEYS = [
-  "UPLOADS_DIR",
   "BACKEND_URL",
   "MAX_FILE_SIZE",
   "CHUNK_TIMEOUT_MS",
@@ -34,7 +33,6 @@ describe("loadConfig", () => {
 
   it("returns valid defaults when no env vars set", () => {
     const config = loadConfig();
-    assertEquals(config.UPLOADS_DIR, "/app/uploads");
     assertEquals(config.BACKEND_URL, "http://api:4000/messages");
     assertEquals(config.MAX_FILE_SIZE, 10_000_000);
     assertEquals(config.CHUNK_TIMEOUT_MS, 2000);
@@ -44,7 +42,6 @@ describe("loadConfig", () => {
   });
 
   it("accepts valid custom values", () => {
-    Deno.env.set("UPLOADS_DIR", "/tmp/test");
     Deno.env.set("BACKEND_URL", "http://localhost:3000/api");
     Deno.env.set("MAX_FILE_SIZE", "5000000");
     Deno.env.set("CHUNK_TIMEOUT_MS", "5000");
@@ -53,7 +50,6 @@ describe("loadConfig", () => {
     Deno.env.set("MAX_STREAM_BYTES", "20000000");
 
     const config = loadConfig();
-    assertEquals(config.UPLOADS_DIR, "/tmp/test");
     assertEquals(config.BACKEND_URL, "http://localhost:3000/api");
     assertEquals(config.MAX_FILE_SIZE, 5_000_000);
     assertEquals(config.CHUNK_TIMEOUT_MS, 5000);
@@ -85,11 +81,5 @@ describe("loadConfig", () => {
   it("throws on invalid MP3_BITRATE format", () => {
     Deno.env.set("MP3_BITRATE", "abc");
     assertThrows(() => loadConfig(), Error, "Invalid MP3_BITRATE");
-  });
-
-  it("falls back to default when UPLOADS_DIR is empty", () => {
-    Deno.env.set("UPLOADS_DIR", "");
-    const config = loadConfig();
-    assertEquals(config.UPLOADS_DIR, "/app/uploads");
   });
 });

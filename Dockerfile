@@ -5,4 +5,4 @@ USER root
 RUN apt-get update && apt-get install -y ffmpeg
 COPY . .
 RUN deno cache main.ts
-CMD ["run", "--allow-net", "--allow-write", "--allow-read", "--allow-run", "--allow-env", "main.ts"]
+CMD ["run", "--allow-net", "--allow-run", "--allow-env", "main.ts"]

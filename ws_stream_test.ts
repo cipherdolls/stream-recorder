@@ -5,7 +5,6 @@ import type { Config } from "./config.ts";
 
 function makeTestConfig(): Config {
   return {
-    UPLOADS_DIR: "/tmp/test-uploads",
     BACKEND_URL: "http://localhost:4000/messages",
     MAX_FILE_SIZE: 10_000_000,
     CHUNK_TIMEOUT_MS: 2000,

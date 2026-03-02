@@ -1,25 +1,16 @@
-import { join } from "@std/path";
 import * as log from "@std/log";
-import { validateFile, safeRemoveFile } from "./file.ts";
 import type { Config } from "./config.ts";
 
 export const forwardMp3ToApi = async (
-  fileId: string,
+  mp3Data: Uint8Array,
   chatId: string,
   authHeader: string,
   config: Config,
 ): Promise<Response> => {
-  const mp3FileName = `${fileId}.mp3`;
-  const mp3FilePath = join(config.UPLOADS_DIR, mp3FileName);
-
   try {
-    await validateFile(mp3FilePath, config.MAX_FILE_SIZE);
-
-    const mp3File = await Deno.readFile(mp3FilePath);
-
     const formData = new FormData();
-    const fileBlob = new Blob([mp3File], { type: "audio/mpeg" });
-    formData.append("file", fileBlob, mp3FileName);
+    const fileBlob = new Blob([mp3Data.slice()], { type: "audio/mpeg" });
+    formData.append("file", fileBlob, "recording.mp3");
     formData.append("chatId", chatId);
 
     const response = await fetch(config.BACKEND_URL, {
@@ -34,11 +25,10 @@ export const forwardMp3ToApi = async (
       throw new Error(`API forwarding failed: ${errorText}`);
     }
 
-    await safeRemoveFile(mp3FilePath);
+    log.info("MP3 forwarded to API", { chatId, size: mp3Data.length });
     return response;
   } catch (error) {
     log.error("MP3 forwarding error", error, {
-      fileId,
       chatId,
       backendUrl: config.BACKEND_URL,
     });

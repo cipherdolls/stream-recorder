@@ -1,9 +1,6 @@
-import { ensureDir } from "@std/fs";
-import { join } from "@std/path";
 import { crypto } from "@std/crypto/crypto";
 import * as log from "@std/log";
 import type { Config } from "./config.ts";
-import { safeRemoveFile } from "./file.ts";
 import { convertWavToMp3 } from "./ffmpeg.ts";
 import { forwardMp3ToApi } from "./api_forwarder.ts";
 import { sanitizeChatId } from "./sanitize.ts";
@@ -30,11 +27,8 @@ export function wsStreamHandler(req: Request, config: Config): Response {
 
   const { socket, response } = Deno.upgradeWebSocket(req);
 
-  const fileId = crypto.randomUUID();
-  const wavFilePath = join(config.UPLOADS_DIR, `${fileId}.wav`);
-  const mp3FilePath = join(config.UPLOADS_DIR, `${fileId}.mp3`);
-
-  let file: Deno.FsFile | null = null;
+  const streamId = crypto.randomUUID();
+  const chunks: Uint8Array[] = [];
   let totalBytes = 0;
   let chunkCount = 0;
   let timeoutId: number | null = null;
@@ -42,27 +36,19 @@ export function wsStreamHandler(req: Request, config: Config): Response {
   const resetTimeout = () => {
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => {
-      log.warn("WS stream timeout", { fileId, totalBytes });
+      log.warn("WS stream timeout", { streamId, totalBytes });
       socket.close(1000, "timeout");
     }, config.CHUNK_TIMEOUT_MS);
   };
 
   socket.binaryType = "arraybuffer";
 
-  socket.onopen = async () => {
-    log.info("WS stream opened", { fileId, chatId });
-    await ensureDir(config.UPLOADS_DIR);
-    file = await Deno.open(wavFilePath, {
-      create: true,
-      write: true,
-      truncate: true,
-      mode: 0o600,
-    });
+  socket.onopen = () => {
+    log.info("WS stream opened", { streamId, chatId });
     resetTimeout();
   };
 
-  socket.onmessage = async (event) => {
-    if (!file) return;
+  socket.onmessage = (event) => {
     const data =
       event.data instanceof ArrayBuffer
         ? new Uint8Array(event.data)
@@ -75,7 +61,7 @@ export function wsStreamHandler(req: Request, config: Config): Response {
 
     if (totalBytes > config.MAX_STREAM_BYTES) {
       log.warn("WS stream exceeded max size", {
-        fileId,
+        streamId,
         totalBytes,
         max: config.MAX_STREAM_BYTES,
       });
@@ -84,43 +70,39 @@ export function wsStreamHandler(req: Request, config: Config): Response {
     }
 
     resetTimeout();
-
-    try {
-      await file.write(data);
-    } catch (err) {
-      log.error("WS file write error", err, { fileId });
-      socket.close(1011, "write error");
-    }
+    chunks.push(data);
   };
 
   socket.onclose = async () => {
     if (timeoutId) clearTimeout(timeoutId);
-    if (file) {
-      file.close();
-      file = null;
-    }
 
-    log.info("WS stream closed", { fileId, totalBytes, chunkCount });
+    log.info("WS stream closed", { streamId, totalBytes, chunkCount });
 
-    if (totalBytes === 0) {
-      await safeRemoveFile(wavFilePath);
-      return;
-    }
+    if (totalBytes === 0) return;
 
     try {
-      await convertWavToMp3(fileId, config);
-      await forwardMp3ToApi(fileId, chatId, `Bearer ${authorization}`, config);
-      log.info("WS stream processed OK", { fileId, chatId });
+      const wavData = concatChunks(chunks, totalBytes);
+      const mp3Data = await convertWavToMp3(wavData, config);
+      await forwardMp3ToApi(mp3Data, chatId, `Bearer ${authorization}`, config);
+      log.info("WS stream processed OK", { streamId, chatId });
     } catch (err) {
-      log.error("WS audio processing error", err, { fileId, chatId });
-      await safeRemoveFile(wavFilePath);
-      await safeRemoveFile(mp3FilePath);
+      log.error("WS audio processing error", err, { streamId, chatId });
     }
   };
 
   socket.onerror = (event) => {
-    log.error("WS error", { fileId, message: String(event) });
+    log.error("WS error", { streamId, message: String(event) });
   };
 
   return response;
+}
+
+function concatChunks(chunks: Uint8Array[], totalBytes: number): Uint8Array {
+  const result = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
 }

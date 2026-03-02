@@ -41,7 +41,7 @@ const html = `<!DOCTYPE html>
   <div class="step"><span class="step-num">1.</span><span class="step-text">Connect via WebSocket to <code>/ws-stream</code> with auth token and chat ID</span></div>
   <div class="step"><span class="step-num">2.</span><span class="step-text">Stream raw audio data (WAV) as binary WebSocket messages</span></div>
   <div class="step"><span class="step-num">3.</span><span class="step-text">Close the WebSocket when recording is done</span></div>
-  <div class="step"><span class="step-num">4.</span><span class="step-text">Server converts WAV to MP3 via ffmpeg and forwards to backend API</span></div>
+  <div class="step"><span class="step-num">4.</span><span class="step-text">Server converts WAV to MP3 in-memory via ffmpeg and forwards to backend API</span></div>
 
   <h2>WebSocket Endpoint</h2>
   <pre><code>GET /ws-stream?auth=&lt;token&gt;&amp;chatId=&lt;id&gt;</code></pre>
@@ -75,15 +75,14 @@ ws.close();</code></pre>
   <ul>
     <li><code>1000</code> &mdash; Normal close or idle timeout</li>
     <li><code>1009</code> &mdash; Stream exceeded maximum size</li>
-    <li><code>1011</code> &mdash; Server write error</li>
+    <li><code>1011</code> &mdash; Server error</li>
   </ul>
 
   <h2>Configuration</h2>
   <table>
     <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
-    <tr><td>UPLOADS_DIR</td><td>/app/uploads</td><td>Temp directory for audio files</td></tr>
     <tr><td>BACKEND_URL</td><td>http://api:4000/messages</td><td>Backend API endpoint</td></tr>
-    <tr><td>MAX_FILE_SIZE</td><td>10000000</td><td>Max file size for conversion/forwarding (bytes)</td></tr>
+    <tr><td>MAX_FILE_SIZE</td><td>10000000</td><td>Max input size for ffmpeg conversion (bytes)</td></tr>
     <tr><td>MAX_STREAM_BYTES</td><td>10000000</td><td>Max bytes accepted per WebSocket stream</td></tr>
     <tr><td>CHUNK_TIMEOUT_MS</td><td>2000</td><td>Idle timeout between chunks before auto-close</td></tr>
     <tr><td>FETCH_TIMEOUT_MS</td><td>30000</td><td>Timeout for backend API request</td></tr>
