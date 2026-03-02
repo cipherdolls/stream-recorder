@@ -36,15 +36,17 @@ export function wsStreamHandler(req: Request, config: Config): Response {
   const resetTimeout = () => {
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => {
-      log.warn("WS stream timeout", { streamId, totalBytes });
+      log.warn(`Stream idle timeout after ${(totalBytes / 1024).toFixed(1)} KB`, { streamId, chatId, totalBytes });
       socket.close(1000, "timeout");
     }, config.CHUNK_TIMEOUT_MS);
   };
 
   socket.binaryType = "arraybuffer";
 
+  const startTime = Date.now();
+
   socket.onopen = () => {
-    log.info("WS stream opened", { streamId, chatId });
+    log.info("Stream opened", { streamId, chatId });
     resetTimeout();
   };
 
@@ -60,10 +62,8 @@ export function wsStreamHandler(req: Request, config: Config): Response {
     totalBytes += data.length;
 
     if (totalBytes > config.MAX_STREAM_BYTES) {
-      log.warn("WS stream exceeded max size", {
-        streamId,
-        totalBytes,
-        max: config.MAX_STREAM_BYTES,
+      log.warn(`Stream exceeded max size — ${(totalBytes / 1024).toFixed(0)} KB > ${(config.MAX_STREAM_BYTES / 1024).toFixed(0)} KB`, {
+        streamId, chatId, totalBytes, max: config.MAX_STREAM_BYTES,
       });
       socket.close(1009, "message too big");
       return;
@@ -75,23 +75,45 @@ export function wsStreamHandler(req: Request, config: Config): Response {
 
   socket.onclose = async () => {
     if (timeoutId) clearTimeout(timeoutId);
+    const streamDurationMs = Date.now() - startTime;
+    const streamDurationS = (streamDurationMs / 1000).toFixed(1);
+    const sizeKB = (totalBytes / 1024).toFixed(1);
 
-    log.info("WS stream closed", { streamId, totalBytes, chunkCount });
+    log.info(`Stream closed — ${sizeKB} KB in ${streamDurationS}s (${chunkCount} chunks)`, {
+      streamId, chatId, totalBytes, chunkCount, streamDurationMs,
+    });
 
-    if (totalBytes === 0) return;
+    if (totalBytes === 0) {
+      log.warn("Stream empty, skipping processing", { streamId, chatId });
+      return;
+    }
 
     try {
       const wavData = concatChunks(chunks, totalBytes);
+
+      const t0 = Date.now();
       const mp3Data = await convertWavToMp3(wavData, config);
+      const convertMs = Date.now() - t0;
+
+      const t1 = Date.now();
       await forwardMp3ToApi(mp3Data, chatId, `Bearer ${authorization}`, config);
-      log.info("WS stream processed OK", { streamId, chatId });
+      const forwardMs = Date.now() - t1;
+
+      const totalMs = Date.now() - startTime;
+      const ratio = ((mp3Data.length / totalBytes) * 100).toFixed(0);
+      log.info(
+        `Pipeline complete — WAV ${sizeKB} KB -> MP3 ${(mp3Data.length / 1024).toFixed(1)} KB (${ratio}%) | convert ${convertMs}ms, forward ${forwardMs}ms, total ${totalMs}ms`,
+        { streamId, chatId, wavBytes: totalBytes, mp3Bytes: mp3Data.length, convertMs, forwardMs, totalMs },
+      );
     } catch (err) {
-      log.error("WS audio processing error", err, { streamId, chatId });
+      log.error(`Pipeline failed — ${err instanceof Error ? err.message : String(err)}`, {
+        streamId, chatId, totalBytes, error: String(err),
+      });
     }
   };
 
   socket.onerror = (event) => {
-    log.error("WS error", { streamId, message: String(event) });
+    log.error(`Stream error — ${String(event)}`, { streamId, chatId });
   };
 
   return response;
