@@ -11,6 +11,7 @@ function makeTestConfig(): Config {
     MP3_BITRATE: "64k",
     FETCH_TIMEOUT_MS: 30_000,
     MAX_STREAM_BYTES: 10_000_000,
+    IDLE_TIMEOUT_MS: 300_000,
   };
 }
 

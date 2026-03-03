@@ -7,6 +7,7 @@ export interface Config {
   FETCH_TIMEOUT_MS: number;
   MAX_FILE_SIZE: number;
   MAX_STREAM_BYTES: number;
+  IDLE_TIMEOUT_MS: number;
 }
 
 function parseIntStrict(value: string | undefined, fallback: number): number {
@@ -37,6 +38,7 @@ export function loadConfig(): Config {
     FETCH_TIMEOUT_MS: parseIntStrict(Deno.env.get("FETCH_TIMEOUT_MS"), 30_000),
     MAX_FILE_SIZE: parseIntStrict(Deno.env.get("MAX_FILE_SIZE"), 10_000_000),
     MAX_STREAM_BYTES: parseIntStrict(Deno.env.get("MAX_STREAM_BYTES"), 10_000_000),
+    IDLE_TIMEOUT_MS: parseIntStrict(Deno.env.get("IDLE_TIMEOUT_MS"), 300_000),
   };
   validateConfig(config);
   log.info(`Config loaded — backend=${config.BACKEND_URL} bitrate=${config.MP3_BITRATE} timeout=${config.CHUNK_TIMEOUT_MS}ms`);

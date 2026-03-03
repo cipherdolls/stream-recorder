@@ -9,6 +9,7 @@ const ENV_KEYS = [
   "MP3_BITRATE",
   "FETCH_TIMEOUT_MS",
   "MAX_STREAM_BYTES",
+  "IDLE_TIMEOUT_MS",
 ];
 
 describe("loadConfig", () => {
@@ -39,6 +40,7 @@ describe("loadConfig", () => {
     assertEquals(config.MP3_BITRATE, "64k");
     assertEquals(config.FETCH_TIMEOUT_MS, 30_000);
     assertEquals(config.MAX_STREAM_BYTES, 10_000_000);
+    assertEquals(config.IDLE_TIMEOUT_MS, 300_000);
   });
 
   it("accepts valid custom values", () => {

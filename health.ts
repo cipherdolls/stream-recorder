@@ -87,6 +87,7 @@ ws.close();</code></pre>
     <tr><td>CHUNK_TIMEOUT_MS</td><td>2000</td><td>Idle timeout between chunks before auto-close</td></tr>
     <tr><td>FETCH_TIMEOUT_MS</td><td>30000</td><td>Timeout for backend API request</td></tr>
     <tr><td>MP3_BITRATE</td><td>64k</td><td>FFmpeg MP3 encoding bitrate</td></tr>
+    <tr><td>IDLE_TIMEOUT_MS</td><td>300000</td><td>WebSocket idle timeout before auto-close</td></tr>
   </table>
 </body>
 </html>`;
