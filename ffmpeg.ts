@@ -16,11 +16,19 @@ export const defaultPipeRunner: PipeRunner = async (cmd, args, stdin) => {
   });
   const process = command.spawn();
 
-  const writer = process.stdin.getWriter();
-  await writer.write(stdin);
-  await writer.close();
+  // Write stdin and read output concurrently to avoid deadlock.
+  // If stdin is large, ffmpeg's stdout buffer can fill up before all
+  // stdin is written, blocking both sides.
+  const writePromise = (async () => {
+    const writer = process.stdin.getWriter();
+    await writer.write(stdin);
+    await writer.close();
+  })();
 
-  const { success, stdout, stderr } = await process.output();
+  const [, { success, stdout, stderr }] = await Promise.all([
+    writePromise,
+    process.output(),
+  ]);
   return { success, stdout, stderr };
 };
 
