@@ -63,7 +63,7 @@ export function wsStreamHandler(
   };
 
   socket.onopen = () => {
-    log.info(`[${chatId}] Connection opened`);
+    log.info(`[${chatId}] Connection opened — backend=${config.BACKEND_URL}, maxStream=${(config.MAX_STREAM_BYTES / 1024 / 1024).toFixed(1)}MB, idleTimeout=${config.IDLE_TIMEOUT_MS}ms`);
     resetIdleTimeout();
   };
 
@@ -108,11 +108,15 @@ export function wsStreamHandler(
           chunkCount: 0,
           startTime: Date.now(),
         };
+        log.info(`[${chatId}] Auto-started recording (no recording_start control message)`);
       }
       const data = new Uint8Array(event.data as ArrayBuffer);
       recording.chunks.push(data);
       recording.totalBytes += data.length;
       recording.chunkCount++;
+      if (recording.chunkCount % 50 === 0) {
+        log.debug(`[${chatId}] Receiving audio — ${recording.chunkCount} chunks, ${(recording.totalBytes / 1024).toFixed(1)} KB`);
+      }
 
       if (recording.totalBytes > config.MAX_STREAM_BYTES) {
         log.warn(
@@ -160,10 +164,13 @@ async function finalizeRecording(
   try {
     const wavData = concatChunks(recording.chunks, recording.totalBytes);
 
+    log.info(`[${chatId}] Starting WAV -> MP3 conversion — ${(wavData.length / 1024).toFixed(1)} KB input`);
     const t0 = Date.now();
     const mp3Data = await convertWavToMp3(wavData, config);
     const convertMs = Date.now() - t0;
+    log.info(`[${chatId}] Conversion done in ${convertMs}ms — ${(mp3Data.length / 1024).toFixed(1)} KB output`);
 
+    log.info(`[${chatId}] Forwarding to API at ${config.BACKEND_URL}`);
     const t1 = Date.now();
     await forwardMp3ToApi(
       mp3Data,

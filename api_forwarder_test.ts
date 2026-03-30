@@ -11,6 +11,7 @@ function makeTestConfig(): Config {
     MP3_BITRATE: "64k",
     FETCH_TIMEOUT_MS: 30_000,
     MAX_STREAM_BYTES: 10_000_000,
+    IDLE_TIMEOUT_MS: 300_000,
   };
 }
 
@@ -49,7 +50,7 @@ describe("forwardMp3ToApi", () => {
     await assertRejects(
       () => forwardMp3ToApi(new Uint8Array([0xff]), "chat-123", "Bearer tok", config),
       Error,
-      "API forwarding failed",
+      "Backend 500",
     );
   });
 

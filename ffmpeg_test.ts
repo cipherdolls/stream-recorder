@@ -11,6 +11,7 @@ function makeTestConfig(): Config {
     MP3_BITRATE: "64k",
     FETCH_TIMEOUT_MS: 30_000,
     MAX_STREAM_BYTES: 10_000_000,
+    IDLE_TIMEOUT_MS: 300_000,
   };
 }
 
@@ -88,7 +89,7 @@ describe("convertWavToMp3", () => {
     await assertRejects(
       () => convertWavToMp3(new Uint8Array(100), config, runner),
       Error,
-      "Conversion failed: conversion error details",
+      "ffmpeg failed: conversion error details",
     );
   });
 

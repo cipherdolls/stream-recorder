@@ -41,6 +41,6 @@ export function loadConfig(): Config {
     IDLE_TIMEOUT_MS: parseIntStrict(Deno.env.get("IDLE_TIMEOUT_MS"), 300_000),
   };
   validateConfig(config);
-  log.info(`Config loaded — backend=${config.BACKEND_URL} bitrate=${config.MP3_BITRATE} timeout=${config.CHUNK_TIMEOUT_MS}ms`);
+  log.info(`Config loaded — backend=${config.BACKEND_URL} bitrate=${config.MP3_BITRATE} chunkTimeout=${config.CHUNK_TIMEOUT_MS}ms fetchTimeout=${config.FETCH_TIMEOUT_MS}ms maxFile=${(config.MAX_FILE_SIZE / 1024 / 1024).toFixed(1)}MB maxStream=${(config.MAX_STREAM_BYTES / 1024 / 1024).toFixed(1)}MB idleTimeout=${config.IDLE_TIMEOUT_MS}ms`);
   return config;
 }
