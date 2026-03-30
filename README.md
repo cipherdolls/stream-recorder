@@ -49,9 +49,11 @@ deno task test
 
 ## Docker
 
+Pre-built images are available on [GitHub Container Registry](https://github.com/cipherdolls/stream-recorder/pkgs/container/stream-recorder).
+
 ```bash
-docker build -t stream-recorder .
-docker run -p 8000:8000 -e BACKEND_URL=http://api:4000/messages stream-recorder
+docker pull ghcr.io/cipherdolls/stream-recorder:main
+docker run -p 8000:8000 -e BACKEND_URL=http://api:4000/messages ghcr.io/cipherdolls/stream-recorder:main
 ```
 
 ## Client Example
